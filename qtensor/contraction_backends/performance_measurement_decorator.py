@@ -1,6 +1,7 @@
 from qtensor.contraction_backends import ContractionBackend, NumpyBackend
 from qtensor.utils import ReportTable
 from pyrofiler import timing
+import torch
 
 class PerfBackend(ContractionBackend):
     Backend = ContractionBackend
@@ -120,3 +121,21 @@ class PerfBackend(ContractionBackend):
 
 class PerfNumpyBackend(PerfBackend):
     Backend = NumpyBackend
+
+
+class GPUPerfBackend(PerfBackend):
+    def process_bucket(self, bucket, no_sum=False):
+        indices = [tensor.indices for tensor in bucket]
+
+        start = torch.cuda.Event(enable_timing=True)
+        end = torch.cuda.Event(enable_timing=True)
+        start.record()
+
+        out = self.backend.process_bucket(bucket, no_sum=no_sum)
+        
+        end.record()
+        torch.cuda.synchronize()
+        time= start.elapsed_time(end)/1000
+
+        self._profile_callback(time,'process bucket time',indices)
+        return out

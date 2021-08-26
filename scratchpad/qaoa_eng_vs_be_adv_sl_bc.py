@@ -7,8 +7,10 @@ import pyrofiler
 import qtensor
 from qtensor import QtreeQAOAComposer
 from qtensor import QAOAQtreeSimulator
-from qtensor.contraction_backends import get_backend, get_perf_backend
+from qtensor.contraction_backends import get_backend, get_cpu_perf_backend, get_gpu_perf_backend
 
+gpu_backends = ['torch_gpu', 'cupy', 'tr_torch', 'tr_cupy', 'tr_cutensor']
+cpu_backends = ['einsum', 'torch_cpu', 'mkl', 'opt_einsum', 'tr_einsum', 'opt_einsum']
 
 timing = pyrofiler.timing
 
@@ -43,11 +45,10 @@ def get_gpu_props_json():
 
 paramtest = [
     [4,4,3,"random"]
-    ,[4, 4, 3, 'random']
     ,[10, 5, 2, 'random']
     ,[14, 1, 3, 'random']
-    ,[3, 3, 0, 'grid2d']
-    ,[8, 4, 0, 'line']
+    # ,[3, 3, 0, 'grid2d']
+    # ,[8, 4, 0, 'line']
 ]
 
 def mean_mmax(x: list):
@@ -90,7 +91,10 @@ CHANGE: Rid aggregation methods
 '''
 def gen_be_lc_report(G, gamma, beta, edge, peo, backend_name, gen_base = 0):
 
-    curr_backend = get_perf_backend(backend_name)
+    if backend_name in gpu_backends:
+        curr_backend = get_gpu_perf_backend(backend_name)
+    else:
+        curr_backend = get_cpu_perf_backend(backend_name)
     curr_sim = QAOAQtreeSimulator(QtreeQAOAComposer,backend=curr_backend)
     circuit = curr_sim._edge_energy_circuit(G, gamma, beta, edge)
     curr_sim.simulate_batch(circuit, peo = peo)
@@ -185,7 +189,7 @@ def process_reduced_data(G, gamma, beta, edge, peo, backend_name, problem, repea
                     "d" :problem[2] ,
                     'type': problem[3]
                     }
-        bi_json_usable["experiment_group"] = "Chen_AV100_Test"
+        bi_json_usable["experiment_group"] = "Angela_nslb_circuit"
         lc_collection.append(bi_json_usable)
     #print(json.dumps(lc_collection, indent = 4))
 
@@ -196,10 +200,11 @@ def process_reduced_data(G, gamma, beta, edge, peo, backend_name, problem, repea
 
 if __name__ == '__main__':
     gen_sim = QAOAQtreeSimulator(QtreeQAOAComposer)
-    backends = ["cupy","torch_gpu","einsum","torch","tr_einsum","opt_einsum"]
+    backends = ['einsum', 'torch_cpu', 'opt_einsum', 'tr_einsum', 'opt_einsum', 'torch_gpu', 'cupy', 'tr_cupy', 'tr_cutensor'] #'tr_torch'
+
     my_algo = 'rgreedy_0.05_30'
 
-    for pb in [paramtest[0]]:
+    for pb in paramtest:
 
         '''
         Generate fixed peos for a given problem, thus be used for various backends

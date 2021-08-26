@@ -9,20 +9,26 @@ import fire
 
 import qtree
 import qtensor
-try:
-    import ctf
-except ImportError:
-    print('Can\'t import ctf')
+# try:
+#     import ctf
+# except ImportError:
+#     print('Can\'t import ctf')
 
 ELEMENT_SIZE = np.zeros((1,), dtype=np.complex128).itemsize
+
 
 def get_backend(backend):
     return {
         'mkl': qtensor.contraction_backends.CMKLExtendedBackend
         , 'einsum': qtensor.contraction_backends.NumpyBackend
-        , 'tr_einsum': qtensor.contraction_backends.TransposedBackend
+        , 'tr_einsum': qtensor.contraction_backends.NumpyTranspoedBackend
         , 'torch': qtensor.contraction_backends.TorchBackend
         , 'opt_einsum': qtensor.contraction_backends.OptEinusmBackend
+        , 'tr_torch': qtensor.contraction_backends.TorchTransposedBackend
+        , 'cupy': qtensor.contraction_backends.CuPyBackend
+        , 'tr_cupy': qtensor.contraction_backends.CupyTransposedBackend
+        , 'tr_cutensor': qtensor.contraction_backends.CutensorTransposedBackend
+
     }[backend]
 
 def callback(x, desc):
@@ -98,7 +104,7 @@ def test_mem(N, p=4, backend='einsum', seed=10, ordering='greedy', merged=False)
             sim.simulate_batch(comp.circuit, peo=peo)
 
         print('max shape', max(map(len, shapes)))
-        print(f'max size {max(mem)*ELEMENT_SIZE:,} ')
+        # print(f'max size {max(mem)*ELEMENT_SIZE:,} ')
         try:
             print('sum times', sum(backend.times))
             print('all times', sum(backend.times_all))
@@ -109,5 +115,5 @@ def test_mem(N, p=4, backend='einsum', seed=10, ordering='greedy', merged=False)
             pass
 
 if __name__=="__main__":
-    fire.Fire(test_mem)
-
+    # fire.Fire(test_mem)
+    test_mem(N=10, backend='tr_cutensor')

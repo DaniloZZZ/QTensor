@@ -7,9 +7,11 @@ import pyrofiler
 import qtensor
 from qtensor import QtreeQAOAComposer
 from qtensor import QAOAQtreeSimulator
-from qtensor.contraction_backends import get_backend, get_perf_backend
+from qtensor.contraction_backends import get_backend, get_cpu_perf_backend, get_gpu_perf_backend
 from qtree.optimizer import Var
 
+gpu_backends = ['torch_gpu', 'cupy', 'tr_torch', 'tr_cupy', 'tr_cutensor']
+cpu_backends = ['einsum', 'torch_cpu', 'mkl', 'opt_einsum', 'tr_einsum', 'opt_einsum']
 
 timing = pyrofiler.timing
 
@@ -92,7 +94,10 @@ Issue:    Needs to find the correct way of defining the gen_time
 '''
 def gen_be_lc_report(G, gamma, beta, edge, peo, backend_name, gen_base = 0):
     with timing(callback = lambda x: None) as gen:
-        curr_backend = get_perf_backend(backend_name)
+        if backend_name in gpu_backends:
+            curr_backend = get_gpu_perf_backend(backend_name)
+        else:
+            curr_backend = get_cpu_perf_backend(backend_name)
         curr_sim = QAOAQtreeSimulator(QtreeQAOAComposer,backend=curr_backend)
         circuit = curr_sim._edge_energy_circuit(G, gamma, beta, edge)
     curr_sim.simulate_batch(circuit, peo = peo)
@@ -238,7 +243,7 @@ def gen_json_for_be_pt(backend_name: str, problem:list, redux_report: dict, opt_
                     "d" :problem[2] ,
                     'type': problem[3]
                     },
-        experiment_group = "Chen_A100_Test"
+        experiment_group = "Angela_nslb_circuit_sl"
         # add a field for lightcone_index
     )
     return res
@@ -248,7 +253,7 @@ def gen_json_for_be_pt(backend_name: str, problem:list, redux_report: dict, opt_
 
 if __name__ == '__main__':
     gen_sim = QAOAQtreeSimulator(QtreeQAOAComposer)
-    backends = ["cupy","torch_gpu","einsum","torch","tr_einsum","opt_einsum"]
+    backends = ['einsum', 'torch_cpu', 'opt_einsum', 'tr_einsum', 'opt_einsum', 'torch_gpu', 'cupy', 'tr_cupy', 'tr_cutensor'] #'tr_torch'
     my_algo = 'rgreedy_0.05_30'
 
     for pb in [paramtest[0]]:
@@ -262,7 +267,7 @@ if __name__ == '__main__':
             peos, widths = get_fixed_peos_for_a_pb(G, gamma, beta, algo = my_algo, sim = gen_sim)
 
         gen_base = gen_pb.result
-        for be in [backends[2]]:
+        for be in backends:
             '''
             Collecting all lightcones' reduced report
             '''

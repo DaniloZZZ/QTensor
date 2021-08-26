@@ -4,38 +4,54 @@ from .numpy import NumpyBackend
 from .torch import TorchBackend
 from .cupy import CuPyBackend
 from .mkl import CMKLExtendedBackend
+from .cupy import CuPyBackend
 from .transposed import TransposedBackend
 from .opt_einsum import OptEinusmBackend
-from .performance_measurement_decorator import PerfNumpyBackend, PerfBackend
+from .transpose_backend import NumpyTranspoedBackend, TorchTransposedBackend, CupyTransposedBackend, CutensorTransposedBackend
+from .performance_measurement_decorator import PerfNumpyBackend, PerfBackend, GPUPerfBackend
 
 def get_backend(name):
     backend_dict = {
         'einsum':NumpyBackend,
-        'torch': TorchBackend,
-        'mkl':CMKLExtendedBackend,
-        'tr_einsum': TransposedBackend,
+        'torch_cpu': TorchBackend,
+        'torch_gpu': TorchBackend,
+        'mkl': CMKLExtendedBackend,
+        'tr_einsum': NumpyTranspoedBackend,
         'opt_einsum': OptEinusmBackend,
-        'cupy': CuPyBackend
-    }
-    if name in ["torch_gpu", "torch_cpu"]:
+        'tr_torch': TorchTransposedBackend,
+        'cupy': CuPyBackend,
+        'tr_cupy': CupyTransposedBackend,
+        'tr_cutensor': CutensorTransposedBackend
+    }[name]()
+    if name in ["torch_gpu", "tr_torch"]:
         return backend_dict['torch'](device = name[-3:])
     else:
         return backend_dict[name]()
 
-def get_perf_backend(name):
+def get_cpu_perf_backend(name):
     class MyPerfBackend(PerfBackend):
         Backend = {
             'einsum':NumpyBackend,
-            'torch': TorchBackend,
             'torch_cpu': TorchBackend,
-            'torch_gpu': TorchBackend,
             'mkl':CMKLExtendedBackend,
-            'tr_einsum': TransposedBackend,
             'opt_einsum': OptEinusmBackend,
-            'cupy': CuPyBackend,
+            'tr_einsum': NumpyTranspoedBackend,
+            'opt_einsum': OptEinusmBackend,
         }[name]
 
-    if name in ["torch_gpu", "torch_cpu"]:
-        return MyPerfBackend(device = name[-3:])
+    return MyPerfBackend()
+
+def get_gpu_perf_backend(name):
+    class MyPerfBackend(GPUPerfBackend):
+        Backend = {
+            'torch_gpu': TorchBackend,
+            'cupy': CuPyBackend,
+            'tr_torch': TorchTransposedBackend,
+            'tr_cupy': CupyTransposedBackend,
+            'tr_cutensor': CutensorTransposedBackend
+        }[name]
+
+    if name == "torch_gpu":
+        return MyPerfBackend(device="gpu")
     else:
         return MyPerfBackend()

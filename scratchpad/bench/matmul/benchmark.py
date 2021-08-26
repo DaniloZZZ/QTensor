@@ -1,3 +1,4 @@
+from numpy.core.fromnumeric import size
 import pyrofiler
 from typing import List
 from contextlib import contextmanager
@@ -19,6 +20,7 @@ class LasyModule:
 np = LasyModule('numpy')
 torch = LasyModule('torch')
 cupy = LasyModule('cupy')
+cupy_cutensor = LasyModule('cutensor')
 import sys
 import os
 sys.path.append(os.environ['HOME']+"/.local")
@@ -52,17 +54,24 @@ class Backend:
         raise NotImplementedError
 
     @classmethod
-    def benchmark_matmul(cls, size, dtype):
+    def benchmark_matmul(cls, size_m, size_n, size_l, dtype):
         # this line will also trigger lazy import
         matmul = cls.get_matmul()
         with cls.timing(callback=lambda x: None) as gen:
-            x = cls.gen_tensor(size, size, dtype=dtype)
-            y = cls.gen_tensor(size, size, dtype=dtype)
+            x = cls.gen_tensor(size_m, size_n, dtype=dtype)
+            y = cls.gen_tensor(size_n, size_l, dtype=dtype)
+            if cls == CuTensor:
+                z = cls.gen_tensor(size_m, size_l, dtype=dtype)
         with cls.timing(callback=lambda x: None) as prep:
             x = cls.prepare(x)
             y = cls.prepare(y)
+            if cls == CuTensor:
+                z = cls.prepare(z)
         with cls.timing(callback=lambda x: None) as mm:
-            z = matmul(x,y)
+            if cls == CuTensor:
+                z = matmul(x,y,z)
+            else:
+                z = matmul(x,y)
         with cls.timing(callback=lambda x: None) as get:
             zr = cls.get_result(z)
         return zr, BenchResult(gen_time=gen.result, transfer_time=prep.result+get.result, mult_time=mm.result)
@@ -162,9 +171,47 @@ class Cupy(Backend):
 
     @staticmethod
     def get_matmul():
-        with pyrofiler.timing('cblas handler', callback=print):
+        with pyrofiler.timing('cblas handler'):
             cupy.cuda.device.get_cublas_handle()
         return cupy.matmul
+
+
+class CuTensor(Cupy):
+
+    @classmethod
+    def gen_tensor(cls, *sizes, dtype='float'):
+        dtype_t = cls.get_dtype(dtype)
+        return cupy.random.rand(*sizes).astype(dtype_t)
+
+    @classmethod
+    def cutensor_matmul(cls, x, y, z):
+        [x, desc_x] = x
+        [y, desc_y] = y
+        [z, desc_z] = z
+        from cupy import cutensor
+        return cutensor.contraction(1, x, desc_x, cls.mode_x, 
+                                y, desc_y, cls.mode_y, 0, 
+                                z, desc_z, cls.mode_z)
+    
+    @classmethod
+    def get_matmul(cls):
+        with pyrofiler.timing('cblas handler'):
+            cupy.cuda.device.get_cublas_handle()
+        return cls.cutensor_matmul
+    
+    @classmethod
+    def prepare(cls, x):
+        from cupy import cutensor
+        if not hasattr(cls, 'extent'):
+            cls.mode_x = ('m', 'k')
+            cls.mode_y = ('k', 'n')
+            cls.mode_z = ('m', 'n')
+            cls.mode_x = cutensor.create_mode(*cls.mode_x)
+            cls.mode_y = cutensor.create_mode(*cls.mode_y)
+            cls.mode_z = cutensor.create_mode(*cls.mode_z)
+        desc_x = cutensor.create_tensor_descriptor(x)
+        return [x, desc_x]
+    
 
 @dataclass
 class ExatnTensor:
@@ -283,7 +330,7 @@ def mean_mmax(x: list):
 # does not affect standard deviation or other times, only matmul
 use_strip = True
 
-def print_results_json(task_type, backend, size, dtype, results: List[BenchResult]):
+def print_results_json(task_type, backend, size_m, size_n, size_l, dtype, results: List[BenchResult], experiment_group="default group"):
     import json
     GPU_PROPS = get_gpu_props_json()
     tt1 = [r.gen_time for r in results]
@@ -295,13 +342,15 @@ def print_results_json(task_type, backend, size, dtype, results: List[BenchResul
     else:
         m2 = np.mean(tt2)
     s1, s2, s3 = np.std(tt1), np.std(tt2), np.std(tt3)
-    flops = size**3/m2
+    flops = size_m*size_n*size_l/m2
     res = dict(
         task_type=task_type
         , backend=backend
-        , size=size
+        , size_m=size_m
+        , size_n=size_n
+        , size_l=size_l
         , itemsize=get_dtype_size(dtype)
-        , bytes=get_dtype_size(dtype)*size**2
+        , bytes=get_dtype_size(dtype)*(size_m*size_n+size_n*size_l)
         , dtype=dtype
         , device_props=dict(name=platform.node(), gpu=GPU_PROPS)
         , transfer_time=m3
@@ -312,14 +361,19 @@ def print_results_json(task_type, backend, size, dtype, results: List[BenchResul
         , mult_relstd=s2
         , flops=flops
         , flops_str=format_flops(flops)
+        , experiment_group=experiment_group
     )
     print(json.dumps(res), flush=True)
-
+    return res
 
 
 def main():
 
-    sizes = [10, 100, 1000, 1024, 1025, 2000, 4090, 4096]
+    sizes_m = [10, 100, 1000, 1024, 1025, 2000, 4090, 4096]
+    sizes_n = [10, 100, 1000, 1024, 1025, 2000, 4090, 4096]
+    sizes_l = [10, 100, 1000, 1024, 1025, 2000, 4090, 4096]
+    # sizes_l = [2, 2, 2, 2, 2, 2, 2, 2]
+    experiment_group = "default_pod_matmul"
     #sizes = [2000, 3000]
     backends = {
         'numpy':Numpy
@@ -327,8 +381,9 @@ def main():
     }
     if get_gpu_props_json():
         backends.update({
-            'torch':TorchCuda
-            ,'cupy':Cupy
+            'torch':TorchCuda,
+            'cupy':Cupy,
+            'cutensor': CuTensor
         })
 
     repeats = 5
@@ -337,18 +392,24 @@ def main():
     task_type = 'matmul'
     dtypes = ['float', 'double', 'complex64', 'complex128']
 
-    #print(f'backend, size, dtype, Time1 mean, Time1 relstd, Time2 mean, Time2 relstd, FLOPs')
-    for backend in backends:
-        for size in sizes:
-            results = []
-            for dtype in dtypes:
-                for _ in range(repeats):
-                    b = backends[backend]
-                    _, bench_result = b.benchmark_matmul(size, dtype)
-                    results.append(bench_result)
+    # print(f'backend, size, dtype, Time1 mean, Time1 relstd, Time2 mean, Time2 relstd, FLOPs')
+    
+    import json
 
-                print_results_json(task_type, backend, size, dtype, results)
+    with open('data.json', mode='w') as f:
 
+        for backend in backends:
+            for size_m, size_n, size_l in zip(sizes_m, sizes_n, sizes_l):
+                results = []
+                for dtype in dtypes:
+                    for _ in range(repeats):
+                        b = backends[backend]
+                        _, bench_result = b.benchmark_matmul(size_m, size_n, size_l, dtype)
+                        results.append(bench_result)
+
+                    json_result = print_results_json(task_type, backend, size_m, size_n, size_l, dtype, results, experiment_group)
+                    # f.write(json.dumps(json_result))
+                    # f.write(",")
 
 if __name__ == "__main__":
     main()

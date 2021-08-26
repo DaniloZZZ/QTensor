@@ -30,8 +30,9 @@ def get_einsum_expr(bucket, all_indices_list, result_indices):
     return expr
 
 class TransposedBackend(ContractionBackend):
-    def __init__(self):
+    def __init__(self, device='gpu'):
         super().__init__()
+        self.device = device
         #self.pbar = tqdm(desc='Buckets', position=2)
         #self.status_bar = tqdm(desc='Current status', position=3, bar_format='{desc}')
 
@@ -40,10 +41,14 @@ class TransposedBackend(ContractionBackend):
         all_indices = sorted(all_indices, key=int)
         result_indices = all_indices[1:]
         contract_index = all_indices[0]
-        #print('contract_index', contract_index, no_sum)
+        # print('contract_index', contract_index, no_sum)
         res = self.process_bucket_merged([contract_index], bucket, no_sum=no_sum)
         # Convert indices to growing, bucket elimination expects this
-        tdata = res.data.transpose(*[res.indices.index(x) for x in result_indices])
+        # print("all_indices:", all_indices)
+        # print("bucket:", bucket)
+        # print("res.indices:", res.indices)
+        # print("result_indices", result_indices)
+        tdata = self.get_transpose(res.data,*[res.indices.index(x) for x in result_indices])
         res = qtree.optimizer.Tensor(name=res.name, indices=tuple(result_indices), data=tdata)
         return res
 
@@ -71,6 +76,9 @@ class TransposedBackend(ContractionBackend):
         mapping = {i:s for i,s in zip(all_indices, CHARS)}
         convert = lambda x: [mapping[i] for i in x]
         return list(map(convert, ixs))
+
+    def get_tncontract():
+        raise NotImplementedError
 
     def pairwise_sum_contract(self, ixa, a, ixb, b, ixout):
         #ixa, ixb, out = self._to_letters(ixa, ixb, ixout)
@@ -110,25 +118,38 @@ class TransposedBackend(ContractionBackend):
                       for ix in (kix, fix, mix, nix)
                      ]
         #print('kfmn', k, f, m, n)
-        a = tensors[0].transpose(*[
+        a = self.get_transpose(tensors[0], *[
             list(ixs[0]).index(x) for x in common + list(mix)
         ])
 
-        b = tensors[1].transpose(*[
+        b = self.get_transpose(tensors[1], *[
             list(ixs[1]).index(x) for x in common + list(nix)
         ])
+
         #print('ixa', ixa, 'ixb', ixb)
         a = a.reshape(k, f, m)
         b = b.reshape(k, f, n)
-        G = np.einsum('ijk,ijl->jkl', a, b)
-        # if len(out)>17:
-        #     print('lg', G.nbytes)
+
+
+        tncontract = self.get_tncontract()
+
+        contraction = 'ijk,ijl->jkl'
+        if self.backend == 'cutensor':
+            a, b, c, mode_a, mode_b, mode_c, desc_a, desc_b, desc_c = self.get_ready(contraction, a, b)
+            G = tncontract(1.0, a, desc_a, mode_a, 
+                        b, desc_b, mode_b, 0, 
+                        c, desc_c, mode_c)
+        else:
+            G = tncontract(contraction, a, b)
+
+        if len(out)>17:
+            print('lg', G.nbytes)
             #print('ax/bx', ixa, ixb, 'out ix', out, 'kfmnix', kix, fix, mix, nix, 'summed', sum_ix)
         if len(out):
             #print('out ix', out, 'kfmnix', kix, fix, mix, nix)
             G = G.reshape(*self._get_index_sizes(*out))
         current_ord_ = list(fix) + list(mix) + list(nix)
-        G = G.transpose(*[current_ord_.index(i) for i in out])
+        G = self.get_transpose(G, *[current_ord_.index(i) for i in out])
 
         return G
 
@@ -189,7 +210,7 @@ class TransposedBackend(ContractionBackend):
             if len(tensors)==1:
                 tensor = bucket[ia]
                 contr_axes = tuple(tensor.indices.index(x) for x in sum_ix)
-                cum_data = np.sum(tensor.data, axis=contr_axes)
+                cum_data = self.get_sum(tensor.data, axis=contr_axes)
                 cum_indices = tuple(x for x in tensor.indices if x not in sum_ix)
             else:
                 ib = vtup.index(tensors[1])
@@ -261,8 +282,55 @@ class TransposedBackend(ContractionBackend):
         return result
 
     def get_sliced_buckets(self, buckets, data_dict, slice_dict):
-        return np_framework.get_sliced_np_buckets(buckets, data_dict, slice_dict)
+        backend = self.backend_module
+        sliced_buckets = []
+        for bucket in buckets:
+            sliced_bucket = []
+            for tensor in bucket:
+                # get data
+                # sort tensor dimensions
+                transpose_order = self.get_argsort(list(map(int, tensor.indices)))
+                data = data_dict[tensor.data_key]
+                data = self.prepare(data)
+                data = self.get_transpose(data, tuple(transpose_order))
+                # transpose indices
+                indices_sorted = [tensor.indices[pp]
+                                  for pp in transpose_order]
 
+                # slice data
+                slice_bounds = []
+                for idx in indices_sorted:
+                    try:
+                        slice_bounds.append(slice_dict[idx])
+                    except KeyError:
+                        slice_bounds.append(slice(None))
+
+                data = data[tuple(slice_bounds)]
+
+                # update indices
+                indices_sliced = [idx.copy(size=size) for idx, size in
+                                  zip(indices_sorted, data.shape)]
+                indices_sliced = [i for sl, i in zip(slice_bounds, indices_sliced) if not isinstance(sl, int)]
+                assert len(data.shape) == len(indices_sliced)
+
+                sliced_bucket.append(
+                    tensor.copy(indices=indices_sliced, data=data))
+            sliced_buckets.append(sliced_bucket)
+
+        return sliced_buckets
+    
+    def get_sum(data, axis):
+        raise NotImplementedError
+    
+    def get_transpose(data, *axis):
+        raise NotImplementedError
+    
+    def prepare(data):
+        return data
+
+    def get_argsort(*args):
+        raise NotImplementedError
+    
     def get_result_data(self, result):
         return result.data
 
