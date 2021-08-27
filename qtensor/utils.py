@@ -284,7 +284,7 @@ def plot_cost(mems, flops):
 
     plt.plot(mems, label='Memory')
     plt.plot(flops, label='FLOP')
-    #plt.legend()
+    plt.legend()
 
 
 def nodes_to_vars(old_graph, peo):

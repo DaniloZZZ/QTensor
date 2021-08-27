@@ -1,3 +1,4 @@
+import qtensor
 import qtree
 import psutil
 import sys
@@ -5,9 +6,11 @@ import numpy as np
 import networkx as nx
 import copy
 
+
 from qtensor import utils
 from qtensor.optimisation.Greedy import GreedyParvars
 from qtensor.optimisation.networkit import greedy_ordering_networkit
+from qtensor.optimisation.kahypar_ordering import use_kahypar
 from loguru import logger as log
 
 
@@ -62,7 +65,6 @@ class GreedyOptimizer(Optimizer):
         # this may be ugly, but it is actually pythonic:)
         # solves two problems: possible inconsistencies in api, and missing networkit.
         # does not introduce overhead
-
         try:
             peo, path = greedy_ordering_networkit(graph)
         except:
@@ -97,6 +99,43 @@ class GreedyOptimizer(Optimizer):
         self.ignored_vars = ignored_vars
         return peo, tensor_net
 
+###################################################################
+class KahyparOptimizer(Optimizer):
+   
+    def _get_kahyper_kwarge(self):
+        # initial hyperparameters: to tune 
+        # different from tuning during the recur_partition
+        kwargs = {'K': 2, 'eps': 0.1, 'seed': 2021, 'mode':0, 'objective':0} 
+        return kwargs
+        
+    def optimize(self, tensor_net, tn):
+        
+        #tensor_net=qtensor.optimisation.QtreeTensorNet.from_qtree_gates(circ)
+        #free_vars = tensor_net.free_vars
+        ignored_vars = tensor_net.ket_vars + tensor_net.bra_vars
+            
+        kwargs = self._get_kahyper_kwarge()
+        #from qtensor.optimisation.kahypar_ordering import generate_TN
+        #tn = generate_TN.circ2tn(circ)
+        
+        # preprocessing to remove edges i_ and o_ (which have only one vertex)
+        #edge =list(tn.keys()); edge.sort()
+        #rem_num_list = [*range(N), *range(len(edge)-1, len(edge)-N-1, -1)]
+        #rem_list = [edge[i] for i in rem_num_list]
+        #[tn.pop(key) for key in rem_list]
+        [tn.pop(key) for key in ignored_vars]
+    
+        tn_partite_list = use_kahypar.recur_partition(tn,**kwargs)        
+        peo, _ = use_kahypar.tree2order(tn,tn_partite_list) # top to bottom
+        self.peo_ints = [int(x) for x in peo] 
+        
+        peo = ignored_vars + peo
+        line_graph = tensor_net.get_line_graph()
+        _, ngh = utils.get_neighbors_path(line_graph, self.peo_ints)
+
+        self.treewidth = max(ngh)
+        return peo, tensor_net
+###################################################################
 
 class SlicesOptimizer(GreedyOptimizer):
 

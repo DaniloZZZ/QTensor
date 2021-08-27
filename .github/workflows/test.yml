@@ -33,7 +33,7 @@ jobs:
         
     - name: Setup dependencies
       run: |
-        pip install numpy torch pynauty
+        pip install numpy torch pynauty kahypar
         pip install pytest mock
         pip install .
         cd qtree && pip install .
