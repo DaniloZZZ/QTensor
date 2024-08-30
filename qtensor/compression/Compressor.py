@@ -513,12 +513,13 @@ class WriteToDiskCompressor(Compressor):
         from pathlib import Path
         Path(path).mkdir(exist_ok=True, parents=True)
         self.path = path
+        self.counter = 0
     
     def _gen_random_filename(self, info):
         dtype, shape, isCupy = info
         k = np.random.randint(0, 100000000)
         s = hex(k)[2:]
-        return self.path + f'/qtensor_data_{s}_{str(dtype)}.bin'
+        return self.path + f'/qtensor_data_{self.counter}_{s}_{str(dtype)}.bin'
 
     def compress(self, data):
         import cupy
@@ -527,6 +528,7 @@ class WriteToDiskCompressor(Compressor):
         else:
             isCupy=True
         fname = self._gen_random_filename((data.dtype, data.shape, isCupy))
+        self.counter += 1
         data.tofile(fname)
         return (fname, data.dtype, data.shape, isCupy)
 
