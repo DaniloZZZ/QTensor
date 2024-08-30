@@ -1,7 +1,8 @@
 import qtensor
 import pytest
 import numpy as np
-from qtensor.contraction_backends import TorchBackend, NumpyBackend
+from qtensor.contraction_backends import NumpyBackend
+from qtensor.contraction_backends.torch import TorchBackend, TorchBackendMatm, permute_flattened
 from qtensor import QtreeSimulator
 from qtensor.tests import get_test_qaoa_ansatz_circ
 torch = pytest.importorskip('torch')
@@ -61,6 +62,22 @@ def test_torch_process_bucket():
 
     assert restr.shape == resnp.shape
     assert np.allclose(restr, resnp)
+# -- Testing low-level functions for torch matm backend
+
+def test_torch_matm_permute():
+    K = 5
+    d = 2
+    shape = [5] + [d]*(K-1)
+    x = torch.randn(shape)
+    for i in range(20):
+        perm = list(np.random.permutation(K))
+        y = permute_flattened(x.flatten(), perm, shape)
+        assert y.ndim == 1
+        assert y.numel() == x.numel()
+        print('perm', perm)
+        assert torch.allclose(y, x.permute(perm).flatten())
+
+# -- Testing get_sliced_buckets
 
 def test_torch_get_sliced__slice():
     backend = TorchBackend()

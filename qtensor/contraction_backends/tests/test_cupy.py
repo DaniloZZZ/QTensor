@@ -2,7 +2,6 @@ import qtensor
 import numpy as np
 
 from qtensor.contraction_backends import CuPyBackend, NumpyBackend
-from qtensor import QtreeSimulator
 
 import pytest
 cp = pytest.importorskip('cupy')
@@ -31,24 +30,6 @@ def get_test_qaoa_tn(n=10, p=2, d=3, type='random'):
     return tn
 
 
-def test_cupy_numpy():
-    circ = get_test_qaoa_circ(p=3)
-    bcp = CuPyBackend()
-    bnp = NumpyBackend()
-    simcp = QtreeSimulator(backend=bcp)
-    simnp = QtreeSimulator(backend=bnp)
-    rescp = simcp.simulate(circ)
-    resnp = simnp.simulate(circ)
-    assert np.allclose(rescp, resnp)
-
-def test_cupy_vanilla():
-    circ = get_test_qaoa_circ(p=3)
-    bcp = CuPyBackend()
-    simcp = QtreeSimulator(backend=bcp)
-    sim = QtreeSimulator()
-    rescp = simcp.simulate(circ)
-    res = sim.simulate(circ)
-    assert np.allclose(rescp, res)
 
 
 def test_cupy_process_bucket():

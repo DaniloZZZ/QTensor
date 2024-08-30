@@ -51,14 +51,22 @@ class Optimizer:
         if free_vars:
             # It's more efficient to find ordering in-place to avoid copying
             # We'll need the copy of a graph only if we have free_vars
+            print('free vars', free_vars)
+            self.free_indices = free_vars
             graph = qtree.graph_model.make_clique_on(graph, free_vars)
             graph_copy = copy.deepcopy(graph)
             self.graph = graph_copy
+        else:
+            self.free_indices = None
 
         peo, path = self._get_ordering(graph, inplace=True)
         self.treewidth = max(path)
 
         if free_vars:
+            free_vars_trunk = [v for v in free_vars if int(v) in self.graph.nodes]
+            if len(free_vars_trunk) != len(free_vars):
+                raise ValueError(f'Free vars were sliced: {free_vars} -> {free_vars_trunk}')
+                free_vars = free_vars_trunk
             peo = qtree.graph_model.get_equivalent_peo(self.graph, peo, free_vars)
 
         peo = ignored_vars + peo
@@ -199,16 +207,15 @@ class SlicesOptimizer(Optimizer):
             nodes, path = qtensor.utils.get_neighbors_path(p_graph, peo_ints)
             # -- Tree re-peo
             g_components = list(nx.connected_components(p_graph))
-            print(f"# of components: {len(g_components)}, # of nodes total: {p_graph.number_of_nodes()}, # of nodes per component: {[len(c) for c in g_components]}")
+            #print(f"# of components: {len(g_components)}, # of nodes total: {p_graph.number_of_nodes()}, # of nodes per component: {[len(c) for c in g_components]}")
             from qtree.graph_model.clique_trees import (
                 get_tree_from_peo, get_peo_from_tree)
             tree = get_tree_from_peo(p_graph, peo_ints)
             clique_vertices = []
-            print("Calling get_peo_from_tree")
             # ---- re-create peo from tree
             peo_recreate = []
             components = list(nx.connected_components(tree))
-            print("# of components: ", len(components))
+            #print("# of components: ", len(components))
             for subtree in components:
                 peo_recreate += get_peo_from_tree(tree.subgraph(subtree).copy(), clique_vertices=clique_vertices)
             # ----
@@ -272,6 +279,12 @@ class SlicesOptimizer(Optimizer):
                                 name=graph.nodes[var]['name'])
                               for var in par_vars]
         #log.info('peo {}', self.peo)
+        #print('graph nodes', len(graph.nodes))
+        #print('pgraph nodes', len(p_graph.nodes))
+        # Remove parallel vars from graph
+        for var in par_vars:
+            qtree.graph_model.base.remove_node(self.graph, var)
+        #self.graph = p_graph
         return peo, [self.treewidth]
 
 class TamakiOptimizer(Optimizer):
@@ -339,10 +352,16 @@ class TreeTrimSplitter(SlicesOptimizer):
             graph, label_dict = qtree.graph_model.relabel_graph_nodes(
                 p_graph, dict(zip(peo_ints, range(len(p_graph.nodes()))))
             )
-            if self.cost_type == 'width':
-                par_vars, _ = qtree.graph_model.splitters.split_graph_by_tree_trimming_width(graph, var_target)
+            if self.free_indices:
+                inv_label_dict = {v:k for k,v in label_dict.items()}
+                ignore_indices = [inv_label_dict[int(v)] for v in self.free_indices]
             else:
-                par_vars, _ = qtree.graph_model.splitters.split_graph_by_tree_trimming(graph, var_target)
+                ignore_indices = []
+            #print('ignore_indices', ignore_indices)
+            if self.cost_type == 'width':
+                par_vars, _ = qtree.graph_model.splitters.split_graph_by_tree_trimming_width(graph, var_target, ignore_indices=ignore_indices)
+            else:
+                par_vars, _ = qtree.graph_model.splitters.split_graph_by_tree_trimming(graph, var_target, ignore_indices=ignore_indices)
             par_vars = [label_dict[i] for i in par_vars]
             for var in  par_vars:
                 log.debug('Remove node {}. Hood size {}', var, utils.n_neighbors(p_graph, var))

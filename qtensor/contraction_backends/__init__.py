@@ -2,7 +2,7 @@
 from .base_class import ContractionBackend
 from .common import slice_numpy_tensor
 from .numpy import NumpyBackend
-from .torch import TorchBackend
+from .torch import TorchBackend, TorchBackendMatm
 from .cupy import CuPyBackend
 from .mkl import CMKLExtendedBackend
 from .cupy import CuPyBackend
@@ -22,6 +22,7 @@ def get_backend(name):
         'opt_einsum': OptEinusmBackend,
         'torch_cpu': TorchBackend,
         'torch_gpu': TorchBackend,
+        'torch_matm': TorchBackendMatm,
         'torch': TorchBackend,
         'cupy': CuPyBackend,
         'cutensor': CuTensorBackend,
