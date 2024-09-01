@@ -85,7 +85,7 @@ class MemProfBackend(ContractionBackend):
             tensors_sizes=[len(tensor.indices) for tensor in self.object_store.values()]
         ))
         # --
-        print('MH', self.mem_history[-1])
+        #print('MH', self.mem_history[-1])
         if cupy_mem>1024**2:
             self._print("CuPy memory usage", cupy_mem/1024/1024, "MB. Total MB:", mempool.total_bytes()/1024**2)
 

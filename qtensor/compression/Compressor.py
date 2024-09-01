@@ -220,7 +220,7 @@ class NEWSZCompressor(Compressor):
         isCuPy, num_elements_eff = _get_data_info(data)
         dtype = data.dtype
         cmp_bytes, outSize_ptr = self.cuszx_compress(isCuPy, data, num_elements_eff, self.r2r_error, self.r2r_threshold)
-        # return (cmp_bytes, num_elements_eff, isCuPy, data.shape, dtype, outSize_ptr)
+        # return (cmpbytes, num_elements_eff, isCuPy, data.shape, dtype, outSize_ptr)
 
         return (cmp_bytes, num_elements_eff, isCuPy, data.shape, dtype, outSize_ptr.contents.value)
 
@@ -526,9 +526,9 @@ class WriteToDiskCompressor(Compressor):
     def compress(self, data):
         import cupy
         if isinstance(data, cupy.ndarray):
-            isCupy=False
-        else:
             isCupy=True
+        else:
+            isCupy=False
         fname = self._gen_filename((data.dtype, data.shape, isCupy))
         data.tofile(fname)
         return (fname, data.dtype, data.shape, isCupy)

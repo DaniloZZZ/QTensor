@@ -99,7 +99,11 @@ class CuPyBackend(ContractionBackend):
                 # cp.argsort requires input to be cp array
                 #print(tensor.indices)
                 out_indices = list(sorted(tensor.indices, key=int, reverse=True))
-                data = data_dict[tensor.data_key]
+                if tensor.data is None:
+                    data = data_dict[tensor.data_key]
+                else:
+                    data = tensor.data
+                #print(f"Data shape: {data.shape}, Tensor indices: {tensor.indices}, out_indices: {out_indices}")
                 data, new_indices = slice_numpy_tensor(data, tensor.indices, out_indices, slice_dict)
                 # transpose indices
                 try:
@@ -114,4 +118,4 @@ class CuPyBackend(ContractionBackend):
         return sliced_buckets
 
     def get_result_data(self, result):
-        return cp.transpose(result.data)
+        return cp.transpose(result.data).get()
