@@ -282,8 +282,9 @@ class SlicesOptimizer(Optimizer):
         #print('graph nodes', len(graph.nodes))
         #print('pgraph nodes', len(p_graph.nodes))
         # Remove parallel vars from graph
-        for var in par_vars:
-            qtree.graph_model.base.remove_node(self.graph, var)
+        if hasattr(self, 'graph'):
+            for var in par_vars:
+                qtree.graph_model.base.remove_node(self.graph, var)
         #self.graph = p_graph
         return peo, [self.treewidth]
 
