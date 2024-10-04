@@ -55,6 +55,10 @@ class CompressionBackend(ContractionBackend):
             )
         if len(bucket)>1:
             t = bucket[-1]
+            if len(t.indices) == 0:
+                print(f"Scalar tensor {t}, {t.data}")
+                accum = accum * t
+                return accum
             total_ixs = sorted(
                 set().union(*[t.indices, accum.indices])
                 , key=int, reverse=True

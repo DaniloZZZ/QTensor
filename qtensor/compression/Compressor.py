@@ -150,7 +150,7 @@ class TorchCompressor(Compressor):
 
     def free_decompressed(self):
         import cupy
-        print("Cleanup", len(self.decompressed_own))
+        #print("Cleanup", len(self.decompressed_own))
         for x in self.decompressed_own:
             del x
         cupy.get_default_memory_pool().free_all_blocks()
@@ -192,7 +192,7 @@ class NEWSZCompressor(Compressor):
 
     def free_decompressed(self):
         import cupy
-        print("Cleanup", len(self.decompressed_own))
+        #print("Cleanup", len(self.decompressed_own))
         for x in self.decompressed_own:
             #print(x)
             #if x == None:
