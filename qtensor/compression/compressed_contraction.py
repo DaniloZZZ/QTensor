@@ -81,7 +81,11 @@ def compressed_contract(A:Tensor, B: Tensor,
 
 
     need_compressed = result_indices[:-mem_limit]
-    new_tensor_name = 'C'+str(int(all_indices[-1]))
+    if len(all_indices) == 0:
+        new_tensor_name = 'C_s'
+        print(f"[Warn]: Scalar inputs in compressed contract, {A}*{B}")
+    else:
+        new_tensor_name = 'C'+str(int(all_indices[-1]))
 
     # -- Early return: if no need to compress, do the regular contraction
     if len(need_compressed)==0 and len(exist_compressed)==0:
